@@ -1,0 +1,30 @@
+config:
+  checks:
+    - simple-check: []
+    - wait-for: [2, 5, 7, 10, 15, 30, 60]
+    - wait-for: [5, 10, 15, 20, 25, 30, 45, 60, 90, 120]
+  actions:
+    - youtube-dl:
+        exec: youtube-dl {}
+    - telegram:
+        exec: telegram-send {}
+    - youtube:
+        call:
+          - youtube-dl
+          - telegram
+  paths:
+    working_directory: /data/download/youtube
+
+
+feeds:
+  - walulis-daily:
+      url: https://www.youtube.com/feeds/videos.xml?channel_id=UCo4693Ony4slDY5hR0ny-bw
+      check:
+        - daily 20:00 *wait-for-long
+      trigger: youtube
+  - walulis:
+      url: https://www.youtube.com/feeds/videos.xml?channel_id=UChkVOG0PqkXIHHmkBGG15Ig
+      check:
+        - Di+Thu 16:16 *wait-for
+      trigger: youtube
+
