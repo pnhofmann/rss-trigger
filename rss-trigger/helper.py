@@ -111,7 +111,7 @@ def user_input(items):
             log("> User input {} - out of range {} - {}".format(number, 1, len(items)))
 
 
-def shell(cmd):
+def shell(cmd, cwd=None):
     class Fail:
         def should_not_fail(self, msg=''):
             fail(msg, fatal=True)
@@ -140,7 +140,7 @@ def shell(cmd):
 
     cli_output = ''
     try:
-        cli_output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT)
+        cli_output = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT, cwd=cwd)
     except subprocess.CalledProcessError as e:
         exit_code = Fail()
         exit_code.exception = str(e)

@@ -21,10 +21,10 @@ feeds:
       url: https://www.youtube.com/feeds/videos.xml?channel_id=UCo4693Ony4slDY5hR0ny-bw
       check:
         - daily 20:00 *wait-for-long
-      trigger: youtube
+      action: youtube
   - walulis:
       url: https://www.youtube.com/feeds/videos.xml?channel_id=UChkVOG0PqkXIHHmkBGG15Ig
       check:
         - Di+Thu 16:16 *wait-for
-      trigger: youtube
+      action: youtube
 

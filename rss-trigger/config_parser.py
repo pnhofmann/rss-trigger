@@ -28,6 +28,14 @@ def check_must_have_keys(yaml):
     yaml['feeds']
 
 
+def try_parse(f):
+    try:
+        return parse(f)
+    except Exception as e:
+        error(str(e))
+        fail("Could not load config file!")
+
+
 def parse(f):
     yaml = parse_yaml(f)
 
@@ -64,18 +72,13 @@ def parse(f):
         try:
             url = feed[1]['url']
             check = feed[1]['check']
-            trigger = feed[1]['trigger']
+            action = feed[1]['action']
         except KeyError as e:
             error("Invalid feed: {} -- {}".format(feed, str(e)))
             continue
-        if not config.add_feed(name, url, check, trigger):
+        if not config.add_feed(name, url, check, action):
             error("Inalid feed {}".format(str(check)))
 
     config.wd = yaml['config']['paths']['working_directory']
     if not os.path.exists(config.wd):
         fail("{} does not exist!".format(str(config.wd)))
-
-
-
-log_init()
-parse('example.yml')
