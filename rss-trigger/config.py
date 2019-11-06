@@ -4,13 +4,14 @@ from helper import *
 
 
 class ConfigObject:
-    def validate_field(self, field, function):
+    def validate_field(self, field, find_function):
         ret = []
         for item_name in field:
-            item = fuction(item_name)
+            item = find_function(item_name)
             if item is None:
                 fail("Object not found: {}".format(item_name))
-            self._ret.append(item)
+            ret.append(item)
+        return ret
 
 
 class Check(ConfigObject):
@@ -19,15 +20,17 @@ class Check(ConfigObject):
         self.days = days
         self.time = time
 
-    def init(days, time):
-        return Check([x for x in self._times], days, time)
+    def init(self, days, time):
+        return Check([x for x in self.times], days, time)
 
     def clone(self):
-        return Check([x for x in self._times])
+        return Check([x for x in self.times])
 
     def next(self):
-        ret = self._times[0]
-        self._times = self._times[1:]
+        if len(self.times) == 0:
+            return False
+        ret = self.times[0]
+        self.times = self.times[1:]
         return ret
 
 
@@ -44,7 +47,7 @@ class ActionCompose(ConfigObject):
         self._children_cache = children
         self.children = []
 
-    def validate(config):
+    def validate(self, config):
         self.children = self.validate_field(self._children_cache, config.get_action)
         self._children_cache = []
 
@@ -52,7 +55,7 @@ class ActionCompose(ConfigObject):
         yield from self.children
 
 
-class Feed:
+class Feed(ConfigObject):
     def __init__(self, url, check, action):
         self.url = url
         self._check_cache = check
@@ -61,16 +64,17 @@ class Feed:
         self.action = []
 
         self.path = False
+        self.cache_file = False
         self.last_id = None
 
-    def validate(config):
+    def validate(self, config):
         def create_check(name):
-            name = split()
+            name = name.split()
             days = name[0]
 
             def str_to_num(string):
                 string = string.lower()
-                days = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"]
+                days = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
                 if string not in days:
                     fail("No day: {}".format(string))
                 return days.index(string)
@@ -78,7 +82,7 @@ class Feed:
             def num_to_day(num):
                 days = [schedule.every().sunday,
                         schedule.every().monday,
-                        schedule.every().tuesday
+                        schedule.every().tuesday,
                         schedule.every().wednesday,
                         schedule.every().thursday,
                         schedule.every().friday,
@@ -86,14 +90,17 @@ class Feed:
                 return days[num]
 
             days_list = []
+            if days == "daily":
+                days = "Mon-Sun"
+
             days_add = days.split("+")
             for day in days_add:
                 day = day.split('-')
                 if len(day) == 1:
-                    days_list.append(day)
+                    days_list.append(str_to_num(day[0]))
                 else:
-                    day0 = day[0]
-                    day1 = day[1]
+                    day0 = str_to_num(day[0])
+                    day1 = str_to_num(day[1])
 
                     if day0 > day1:
                         days_list.extend(range(day0, day1+1))
@@ -107,13 +114,12 @@ class Feed:
             schedule.every().monday
 
             name = name[2]
-            return config.get_check(name).clone(days, time)
+            return config.get_check(name).init(days, time)
 
-        self._check = self.validate_field(self._check_cache, create_check)
+        self.check = self.validate_field(self._check_cache, create_check)
         self._check_cache = []
-        self._action = self.validate_field(self._action_cache, config.get_action)
+        self.action = self.validate_field(self._action_cache, config.get_action)
         self._action_cache = []
-
 
 
 class Config:
@@ -134,14 +140,23 @@ class Config:
         except ValueError:
             return "Not a number"
 
-        self._checks.update({name: Check(times)})
+        time_last = 0
+        times_diff = []
+        for time in times:
+            if time <= time_last:
+                fail("Invalid sequence {} - must be ascending!".format(str(times)))
+            times_diff.append(time - time_last)
+            time_last = time
+
+        self._checks.update({name: Check(times_diff)})
         return True
 
     def get_check(self, name):
+        name = name.replace('*', '')
         if not self._ok:
             fail("Call Config.validate() before get_action()")
-        if name not in self._actions:
-            return None
+        if name not in self._checks:
+            fail("No such Check {}".format(name))
         return self._checks[name]
 
     def add_action(self, name, call=False, cmd=False):
@@ -161,14 +176,14 @@ class Config:
         if not self._ok:
             fail("Call Config.validate() before get_action()")
         if name not in self._actions:
-            return None
+            fail("No such Action {}".format(name))
         return self._actions[name]
 
     def add_feed(self, name, url, check=[], action=[]):
         self._feeds.update({name: Feed(url, check, action)})
         return True
 
-    def get_feeds(self, name):
+    def get_feeds(self):
         if not self._ok:
             fail("Call Config.validate() before get_feed()")
         return self._feeds.values()
@@ -182,21 +197,19 @@ class Config:
     def validate(self):
         if self._wd is False:
             fail("Config invalid: working directory not set!")
-        if os.path.exists(self._wd):
-            fail("Directory {} does not exist.".format(self._wd))
 
-        self._is_ok = True
+        self._ok = True
         for action in self._actions_compose:
-            action.validate(self):
+            action.validate(self)
 
         for name, feed in self._feeds.items():
             feed.validate(self)
-            init_feed_path(name, feed)
+            self.init_feed_path(name, feed)
 
 
-    def init_feed_path(name, feed):
+    def init_feed_path(self, name, feed):
         path = os.path.join(self._wd, name)
-        if not os.path.exists(path):
+        if not os.path.isdir(path):
             os.mkdir(path)
         cache_file = os.path.join(path, "cache")
         if os.path.exists(cache_file):

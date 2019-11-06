@@ -3,10 +3,12 @@ try:
     from yaml import CLoader as Loader, CDumper as Dumper
 except ImportError:
     from yaml import Loader, Dumper
+import os
+import traceback
 
 from helper import *
 from config import *
-import os
+
 
 
 
@@ -33,6 +35,7 @@ def try_parse(f):
         return parse(f)
     except Exception as e:
         error(str(e))
+        traceback.print_exc()
         fail("Could not load config file!")
 
 
@@ -55,6 +58,7 @@ def parse(f):
     for action in yaml['config']['actions']:
         action = action.popitem()
         name = action[0]
+
         call = False
         cmd = False
 
@@ -69,16 +73,28 @@ def parse(f):
     for feed in yaml['feeds']:
         feed = feed.popitem()
         name = feed[0]
+
+        if "disabled" in feed[1] and feed[1]['disabled']:
+            printlog("Skipping disabled feed: {}".format(name))
+            continue
+
         try:
             url = feed[1]['url']
             check = feed[1]['check']
+
             action = feed[1]['action']
+            if isinstance(action, str):
+                action = [action]
         except KeyError as e:
             error("Invalid feed: {} -- {}".format(feed, str(e)))
             continue
         if not config.add_feed(name, url, check, action):
             error("Inalid feed {}".format(str(check)))
 
-    config.wd = yaml['config']['paths']['working_directory']
-    if not os.path.exists(config.wd):
+    wd = yaml['config']['paths']['working_directory']
+    if not os.path.isdir(wd):
         fail("{} does not exist!".format(str(config.wd)))
+    config.set_wd(wd)
+
+    config.validate()
+    return config

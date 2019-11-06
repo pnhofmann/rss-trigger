@@ -157,6 +157,8 @@ def shell(cmd, cwd=None):
     log("-" * 40)
     log("")
 
+    debug_log.flush()
+
     spinning_cursor_stop()
     time.sleep(0.5)
     sys.stdout.write(' \b')
