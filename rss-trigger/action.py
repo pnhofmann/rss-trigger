@@ -8,11 +8,11 @@ import datetime
 
 
 def check_feed(feed_config, check):
-    printlog("Trigger")
     check_feed_impl(feed_config, check.clone())
 
 
 def check_feed_impl(feed_config, check):
+    printlog("Trigger")
     feeds = do_check(feed_config)
 
     if len(feeds) == 0:

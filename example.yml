@@ -5,25 +5,23 @@ config:
     - wait-for: [2, 5, 7, 10, 15, 30, 60]
     - wait-for-long: [5, 10, 15, 20, 25, 30, 45, 60, 90, 120]
   actions:
-    - youtube-dl:
-        exec: youtube-dl {link}
     - telegram:
         exec: telegram-send {title}
-    - youtube:
-        call:
-          - youtube-dl
-          - telegram
     - echo:
         exec: echo {title} {link}
+    - compose:
+        call:
+          - telegram
+          - echo
   paths:
-    working_directory: /data/download/youtube
+    working_directory: cache
 
 
 feeds:
   - walulis-daily:
       url: https://www.youtube.com/feeds/videos.xml?channel_id=UCo4693Ony4slDY5hR0ny-bw
       check:
-        - Mon 20:00 *wait-for-long
+        - Mon 20:00 *retry
       action: echo
   - walulis:
       disabled: true

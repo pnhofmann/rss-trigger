@@ -1,5 +1,6 @@
 import schedule
 import time
+import sys
 
 from helper import *
 import action
@@ -18,6 +19,6 @@ def daemon(config):
 
 if __name__ == '__main__':
     log_init()
-    config = config_parser.try_parse('example.yml')
+    config = config_parser.try_parse(sys.argv[1])
     daemon(config)
     log_close()

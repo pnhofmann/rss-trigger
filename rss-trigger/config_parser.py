@@ -93,7 +93,7 @@ def parse(f):
 
     wd = yaml['config']['paths']['working_directory']
     if not os.path.isdir(wd):
-        fail("{} does not exist!".format(str(config.wd)))
+        fail("{} does not exist!".format(str(wd)))
     config.set_wd(wd)
 
     config.validate()
