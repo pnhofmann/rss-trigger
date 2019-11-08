@@ -23,29 +23,33 @@ def executable_exists(name):
 debug_log = None
 
 
-def log_init():
+def log_init(file=None):
     global debug_log
-    debug_log = NamedTemporaryFile(delete=False, mode="w")
+    if file is None:
+        debug_log = NamedTemporaryFile(delete=False, mode="w")
+    else:
+        debug_log = open(file, "w+")
     print("Logging to {}".format(debug_log.name))
 
 
 def log_close():
-    debug_log.close()
+    global debug_log
+    if debug_log is not None:
+        debug_log.close()
+    debug_log is None
 
 
 def fail(msg, fatal=False):
-    log("Installation failed")
-    log(msg)
     print(msg)
     print('')
     print('')
     if fatal:
-        log("FATAL!")
+        printlog("FATAL!")
         print("ABORT with unexpected error - This should not have happened.")
         print("Please check logs at \"{}\". If you open a bug report, please include this file.".format(debug_log.name))
     else:
         print("ABORT!")
-    debug_log.close()
+    log_close()
     sys.exit(1)
 
 
@@ -59,7 +63,8 @@ def error(msg):
     printlog(Fore.RESET)
 
 def printlog(msg):
-    log(msg)
+    if debug_log is not None:
+        log(msg)
     print(msg)
 
 
@@ -111,7 +116,7 @@ def user_input(items):
             log("> User input {} - out of range {} - {}".format(number, 1, len(items)))
 
 
-def shell(cmd, cwd=None):
+def shell(cmd, cwd=None, env=os.environ):
     class Fail:
         def should_not_fail(self, msg=''):
             fail(msg, fatal=True)

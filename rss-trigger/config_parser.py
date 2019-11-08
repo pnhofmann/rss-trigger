@@ -1,32 +1,31 @@
-from yaml import load, dump, YAMLError
-try:
-    from yaml import CLoader as Loader, CDumper as Dumper
-except ImportError:
-    from yaml import Loader, Dumper
 import os
 import traceback
 
-from helper import *
 from config import *
+from yaml_wrapper import *
 
 
+class Cache:
+    def __init__(self, cache_file):
+        self._file_path = cache_file
+        self._cache = yaml_parse(cache_file)
 
+    def get_last_id(self, feed_name):
+        if feed_name in self._cache:
+            return self._cache[feed_name]
+        return None
 
-def parse_yaml(f):
-    with open(f, 'r') as stream:
-        try:
-            return(load(stream))
-        except YAMLError as exc:
-            printlog(str(exc))
-    fail("Could not load yaml file {}".format())
+    def update_cache(self, feed, last_id):
+        self._cache[feed] = last_id
+        yaml_write(self._file_path, self._cache)
 
 
 def check_must_have_keys(yaml):
     yaml['config']
-    yaml['config']['checks']
-    yaml['config']['actions']
-    yaml['config']['paths']
-    yaml['config']['paths']['working_directory']
+    yaml['config']['cache-file']
+    yaml['config']['environ']
+    yaml['checks']
+    yaml['actions']
     yaml['feeds']
 
 
@@ -40,7 +39,9 @@ def try_parse(f):
 
 
 def parse(f):
-    yaml = parse_yaml(f)
+    yaml = yaml_parse(f)
+    if len(yaml) == 0:
+        fail("Config file {} empty or does not exist!".format(f))
 
     try:
         check_must_have_keys(yaml)
@@ -48,31 +49,46 @@ def parse(f):
         fail("Missing key: {}".format(str(e)))
 
     config = Config()
-    for check in yaml['config']['checks']:
+    if 'log-file' in yaml['config']:
+        config.log_file = yaml['config']['log-file']
+
+    config.cache = Cache(yaml['config']['cache-file'])
+
+    for check in yaml['checks']:
         check = check.popitem()
         name = check[0]
         times = check[1]
         if not config.add_check(name, times):
             fail("Invalid: {}".format(str(check)))
 
-    for action in yaml['config']['actions']:
+    for action in yaml['actions']:
         action = action.popitem()
         name = action[0]
 
         call = False
         cmd = False
+        python = False
 
         if 'exec' in action[1]:
             cmd = action[1]['exec']
         if 'call' in action[1]:
             call = action[1]['call']
+        if 'python' in action[1]:
+            python = action[1]['python']
 
-        if not config.add_action(name, call=call, cmd=cmd):
+        if not config.add_action(name, call=call, cmd=cmd, python=python):
             fail("Invalid: {}".format(str(check)))
+
+    general_environ = Environ()
+    general_environ.parse(yaml['config']['environ'])
 
     for feed in yaml['feeds']:
         feed = feed.popitem()
         name = feed[0]
+
+        environ = general_environ.clone()
+        if 'environ' in feed:
+            environ.parse(feed['environ'])
 
         if "disabled" in feed[1] and feed[1]['disabled']:
             printlog("Skipping disabled feed: {}".format(name))
@@ -88,13 +104,8 @@ def parse(f):
         except KeyError as e:
             error("Invalid feed: {} -- {}".format(feed, str(e)))
             continue
-        if not config.add_feed(name, url, check, action):
+        if not config.add_feed(name, url, check, action, environ):
             error("Inalid feed {}".format(str(check)))
-
-    wd = yaml['config']['paths']['working_directory']
-    if not os.path.isdir(wd):
-        fail("{} does not exist!".format(str(wd)))
-    config.set_wd(wd)
 
     config.validate()
     return config

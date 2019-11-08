@@ -3,6 +3,49 @@ import schedule
 from helper import *
 
 
+class Cache:
+    def __init__(self, cache_file):
+        self._file_path = cache_file
+        self._cache = yaml_parse(cache_file)
+
+    def get_last_id(self, feed_name):
+        if feed_name in self._cache:
+            return self._cache[feed_name]
+        return None
+
+    def update_cache(self, feed, last_id):
+        self._cache[feed] = last_id
+        yaml_write(self._file_path, self._cache)
+
+
+class Environ:
+    def __init__(self, cwd='.', env={}, var={}):
+        self.cwd = cwd
+        self.env = env
+        self.var = var
+
+    def parse(self, config):
+        if 'cwd' in config:
+            self.cwd = config['cwd']
+        if 'env' in config:
+            for env in config['env']:
+                env = env.popitem()
+                key = env[0]
+                value = env[1]
+
+                self.env[key] = value
+        if 'var' in config:
+            for var in config['var']:
+                var = var.popitem()
+                key = var[0]
+                value = var[1]
+
+                self.var[key] = value
+
+    def clone(self):
+        return Environ(self.cwd, self.env.copy(), self.var.copy())
+
+
 class ConfigObject:
     def validate_field(self, field, find_function):
         ret = []
@@ -13,18 +56,22 @@ class ConfigObject:
             ret.append(item)
         return ret
 
+    def __str__(self):
+        return self.name
+
 
 class Check(ConfigObject):
-    def __init__(self, times, days=[], time=[]):
+    def __init__(self, name, times, days=[], time=[]):
+        self.name = name
         self.times = times
         self.days = days
         self.time = time
 
     def init(self, days, time):
-        return Check([x for x in self.times], days, time)
+        return Check(self.name, [x for x in self.times], days, time)
 
     def clone(self):
-        return Check([x for x in self.times])
+        return Check(self.name, [x for x in self.times])
 
     def next(self):
         if len(self.times) == 0:
@@ -34,16 +81,29 @@ class Check(ConfigObject):
         return ret
 
 
-class ActionCMD:
-    def __init__(self, cmd):
-        self.cmd = cmd
+class Action(ConfigObject):
+    def __init__(self, name):
+        self.name = name
 
     def get_actions(self):
         yield self
 
 
-class ActionCompose(ConfigObject):
-    def __init__(self, children):
+class ActionCMD(Action):
+    def __init__(self, name, cmd):
+        super().__init__(name)
+        self.cmd = cmd
+
+
+class ActionPython(Action):
+    def __init__(self, name, cmd):
+        super().__init__(name)
+        self.cmd = cmd
+
+
+class ActionCompose(Action):
+    def __init__(self, name, children):
+        super().__init__(name)
         self._children_cache = children
         self.children = []
 
@@ -56,16 +116,14 @@ class ActionCompose(ConfigObject):
 
 
 class Feed(ConfigObject):
-    def __init__(self, url, check, action):
+    def __init__(self, name, url, check, action, environ):
+        self.name = name
         self.url = url
         self._check_cache = check
         self.check = []
         self._action_cache = action
         self.action = []
-
-        self.path = False
-        self.cache_file = False
-        self.last_id = None
+        self.environ = environ
 
     def validate(self, config):
         def create_check(name):
@@ -80,18 +138,20 @@ class Feed(ConfigObject):
                 return days.index(string)
 
             def num_to_day(num):
-                days = [schedule.every().sunday,
-                        schedule.every().monday,
+                days = [schedule.every().monday,
                         schedule.every().tuesday,
                         schedule.every().wednesday,
                         schedule.every().thursday,
                         schedule.every().friday,
-                        schedule.every().saturday]
+                        schedule.every().saturday,
+                        schedule.every().sunday]
                 return days[num]
 
             days_list = []
             if days == "daily":
                 days = "Mon-Sun"
+            if days == "workday":
+                days = "Mon-Fri"
 
             days_add = days.split("+")
             for day in days_add:
@@ -124,14 +184,15 @@ class Feed(ConfigObject):
 
 class Config:
     def __init__(self):
-        self._wd = False
         self._checks = {}
         self._actions = {}
         self._feeds = {}
 
         self._actions_compose = []
-
         self._ok = False
+
+        self.log_file = None
+        self.cache_file = None
 
     def add_check(self, name, times):
         # validate times
@@ -148,7 +209,7 @@ class Config:
             times_diff.append(time - time_last)
             time_last = time
 
-        self._checks.update({name: Check(times_diff)})
+        self._checks.update({name: Check(name, times_diff)})
         return True
 
     def get_check(self, name):
@@ -159,14 +220,16 @@ class Config:
             fail("No such Check {}".format(name))
         return self._checks[name]
 
-    def add_action(self, name, call=False, cmd=False):
+    def add_action(self, name, call=False, cmd=False, python=False):
         if call is not False:
-            action = ActionCompose(call)
+            action = ActionCompose(name, call)
             self._actions_compose.append(action)
         elif cmd is not False:
-            action = ActionCMD(cmd)
+            action = ActionCMD(name, cmd)
+        elif python is not False:
+            action = ActionPython(name, cmd)
         else:
-            return "Invalid Action"
+            fail("Invalid action {}!".format(name))
 
         self._ok = False
         self._actions.update({name: action})
@@ -179,8 +242,8 @@ class Config:
             fail("No such Action {}".format(name))
         return self._actions[name]
 
-    def add_feed(self, name, url, check=[], action=[]):
-        self._feeds.update({name: Feed(url, check, action)})
+    def add_feed(self, name, url, check, action, environ):
+        self._feeds.update({name: Feed(name, url, check, action, environ)})
         return True
 
     def get_feeds(self):
@@ -188,33 +251,10 @@ class Config:
             fail("Call Config.validate() before get_feed()")
         return self._feeds.values()
 
-    def set_wd(self, wd):
-        self._wd = wd
-
-    def get_wd(self):
-        return self._wd
-
     def validate(self):
-        if self._wd is False:
-            fail("Config invalid: working directory not set!")
-
         self._ok = True
         for action in self._actions_compose:
             action.validate(self)
 
         for name, feed in self._feeds.items():
             feed.validate(self)
-            self.init_feed_path(name, feed)
-
-
-    def init_feed_path(self, name, feed):
-        path = os.path.join(self._wd, name)
-        if not os.path.isdir(path):
-            os.mkdir(path)
-        cache_file = os.path.join(path, "cache")
-        if os.path.exists(cache_file):
-            with open(cache_file, 'r') as reader:
-                feed.last_id = reader.read().splitlines()[0]
-
-        feed.path = path
-        feed.cache_file = cache_file

@@ -1,33 +1,71 @@
 config:
-  checks:
-    - simple-check: []
-    - retry: [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    - wait-for: [2, 5, 7, 10, 15, 30, 60]
-    - wait-for-long: [5, 10, 15, 20, 25, 30, 45, 60, 90, 120]
-  actions:
-    - telegram:
-        exec: telegram-send {title}
-    - echo:
-        exec: echo {title} {link}
-    - compose:
-        call:
-          - telegram
-          - echo
-  paths:
-    working_directory: cache
+  cache-file: cache
+  log-file: log
+  environ:
+    cwd: /data/downloads/youtube/{feed_name}
+    env:
+      - HOME: /home/rss
+      - TEST: TEST
+    var:
+      - title_: var['title'].replace(" ", "_").replace("?", "").replace("|", "")
+      - baseurl: 'http://gallery.tux-server.pnhofmann.de/photos/youtube-download/'
 
+checks:
+  - once: []
+  - retry: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  - wait-for: [2, 5, 7, 10, 15, 30, 60]
+  - wait-for-long: [5, 10, 15, 20, 25, 30, 45, 60, 75, 90, 120]
+
+actions:
+  - youtube-dl-720p:
+      exec: youtube-dl -f '(bestvideo[vcodec^=vp9][width<=1280]/bestvideo[ext=webm][width<=1920]/bestvideo[width<=1280]/bestvideo)+(bestaudio[acodec=opus]/bestaudio[acodec=vorbis]/bestaudio[ext=webm]/bestaudio)/best' '{link}' -o '{published}-{title_}'
+  - youtube-dl-1080p:
+      exec: youtube-dl -f '(bestvideo[vcodec^=vp9][width<=1920]/bestvideo[ext=webm][width<=1920]/bestvideo[width<=1920]/bestvideo)+(bestaudio[acodec=opus]/bestaudio[acodec=vorbis]/bestaudio[ext=webm]/bestaudio)/best' '{link}' -o '{published}-{title_}'
+  - telegram:
+      exec: telegram-send '{title}'
+  - telegram-url:
+      exec: telegram-send '{url}/{published}---{title_}.webm'
+  - youtube-720p:
+      call:
+        - youtube-dl-720p
+        - telegram
+        - telegram-url
+  - youtube-1080p:
+      call:
+        - youtube-dl-1080p
+        - telegram
+  - xkcd-download:
+      python: xkcd-download
+  - echo:
+      exec: echo {title} {link}
+  - test:
+      exec: env
 
 feeds:
   - walulis-daily:
       url: https://www.youtube.com/feeds/videos.xml?channel_id=UCo4693Ony4slDY5hR0ny-bw
       check:
-        - Mon 20:00 *retry
-      action: echo
+        - Mon-Fri 20:00 *wait-for-long
+      action: youtube-720p
+      environ:
+        - cwd: /data/downloads/walulis-daily
+      var:
+        - url: var['baseurl'] + 'walulis-daily'
+
   - walulis:
-      disabled: true
       url: https://www.youtube.com/feeds/videos.xml?channel_id=UChkVOG0PqkXIHHmkBGG15Ig
       check:
-        - daily 14:43 *wait-for
         - Tue+Thu 16:16 *wait-for
-      action: youtube
-
+      action: youtube-720p
+      environ:
+        - cwd: /data/downloads/walulis
+      var:
+        - url: var['baseurl'] + 'walulis'
+  - xkcd:
+      url: https://xkcd.com/atom.xml
+      check:
+        - daily 20:00 *once
+      environ:
+        - cwd: /tmp
+      action:
+        - xkcd-download
