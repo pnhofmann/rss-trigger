@@ -138,13 +138,13 @@ class Feed(ConfigObject):
                 return days.index(string)
 
             def num_to_day(num):
-                days = [schedule.every().monday,
-                        schedule.every().tuesday,
-                        schedule.every().wednesday,
-                        schedule.every().thursday,
-                        schedule.every().friday,
-                        schedule.every().saturday,
-                        schedule.every().sunday]
+                days = [('monday', schedule.every().monday),
+                        ('tuesday', schedule.every().tuesday),
+                        ('wednesday', schedule.every().wednesday),
+                        ('thursday', schedule.every().thursday),
+                        ('friday', schedule.every().friday),
+                        ('saturday', schedule.every().saturday),
+                        ('sunday', schedule.every().sunday)]
                 return days[num]
 
             days_list = []
@@ -227,7 +227,7 @@ class Config:
         elif cmd is not False:
             action = ActionCMD(name, cmd)
         elif python is not False:
-            action = ActionPython(name, cmd)
+            action = ActionPython(name, python)
         else:
             fail("Invalid action {}!".format(name))
 

@@ -1,7 +1,7 @@
 import os
 import sys
 import distutils.spawn
-import time
+import time, datetime
 import subprocess
 from threading import Thread
 from tempfile import NamedTemporaryFile
@@ -21,14 +21,20 @@ def executable_exists(name):
 
 
 debug_log = None
+debug_print_to_cli = True
 
 
-def log_init(file=None):
+def log_init(file=None, print_cli = True):
     global debug_log
+    global debug_print_to_cli
+
+    debug_print_to_cli = print_cli
+
     if file is None:
         debug_log = NamedTemporaryFile(delete=False, mode="w")
     else:
-        debug_log = open(file, "w+")
+        debug_log = open(file, "a")
+        log("{:=^60}".format(str(datetime.datetime.now())))
     print("Logging to {}".format(debug_log.name))
 
 
@@ -65,7 +71,8 @@ def error(msg):
 def printlog(msg):
     if debug_log is not None:
         log(msg)
-    print(msg)
+    if debug_print_to_cli:
+        print(msg)
 
 
 def section(title):
